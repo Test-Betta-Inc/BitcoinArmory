@@ -19,7 +19,7 @@ from ui.WalletFrames import SelectWalletFrame, LockboxSelectFrame
 from armoryengine.MultiSigUtils import \
       calcLockboxID, readLockboxEntryStr, createLockboxEntryStr, isBareLockbox,\
    isP2SHLockbox
-from armoryengine.ArmoryUtils import MAX_COMMENT_LENGTH
+from armoryengine.ArmoryUtils import MAX_COMMENT_LENGTH, getAddrByte
  
 
 
@@ -257,8 +257,12 @@ class SendBitcoinsFrame(ArmoryFrame):
             plainStr = createLockboxEntryStr(prefill.get('lockbox',''))
             self.addOneRecipient(None, amount, message, None, plainStr)
          else:
-            atype, addr160 = addrStr_to_hash160(prefill.get('address',''))
-            self.addOneRecipient(addr160, amount, message, label)
+            addrStr = prefill.get('address','')
+            atype, addr160 = addrStr_to_hash160(addrStr)
+            if atype == getAddrByte():
+               self.addOneRecipient(addr160, amount, message, label)
+            else:
+               self.addOneRecipient(None, amount, message, label, plainText=addrStr)
 
       elif not self.main == None and \
            loadCount % donateFreq == (donateFreq-1) and \
@@ -331,7 +335,7 @@ class SendBitcoinsFrame(ArmoryFrame):
       injecting either fancy script types, or special keywords into the 
       address field, such as a lockbox ID
       """
-      if label is not None:
+      if label is not None and addr160:
          self.wlt.setComment(addr160, label)
 
       lastIsEmpty = True
@@ -849,7 +853,8 @@ class SendBitcoinsFrame(ArmoryFrame):
    def getUsableTxOutList(self, totalSend):
       if self.lbox is None:
          if self.altBalance is None:
-            return list(self.wlt.getUTXOListForSpendVal(totalSend))
+            return self.wlt.getUTXOListForSpendVal(totalSend)
+
          else:
             utxoList = []
             for a160 in self.sourceAddrList:

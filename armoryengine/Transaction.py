@@ -529,7 +529,7 @@ class PyTxIn(BlockComponent):
 
    def getScript(self):
       return self.binScript
-
+   
    def serialize(self):
       binOut = BinaryPacker()
       binOut.put(BINARY_CHUNK, self.outpoint.serialize() )
@@ -569,24 +569,6 @@ class PyTxIn(BlockComponent):
          result = ''.join([result, '\n',  indstr2 + 'Sender:    ', addrStr])
       result = ''.join([result, '\n',  indstr2 + 'Seq:       ', str(self.intSeq)])
       return result
-
-   # Before broadcasting a transaction make sure that the script is canonical
-   # This TX could have been signed by an older version of the software.
-   # Either on the offline Armory installation which may not have been upgraded
-   # or on a previous installation of Armory on this computer.
-   def minimizeDERSignaturePadding(self):
-      rsLen = binary_to_int(self.binScript[2:3])
-      rLen = binary_to_int(self.binScript[4:5])
-      rBin = self.binScript[5:5+rLen]
-      sLen = binary_to_int(self.binScript[6+rLen:7+rLen])
-      sBin = self.binScript[7+rLen:7+rLen+sLen]
-      sigScript = createDERSigFromRS(rBin, sBin)
-      newBinScript = int_to_binary(len(sigScript)+1) + sigScript + self.binScript[3+rsLen:]
-      paddingRemoved = newBinScript != self.binScript
-      newTxIn = self.copy()
-      newTxIn.binScript = newBinScript
-      return paddingRemoved, newTxIn
-
 
 #####
 class PyTxOut(BlockComponent):
@@ -707,24 +689,6 @@ class PyTx(BlockComponent):
       self.nBytes = endPos - startPos
       self.thisHash = hash256(self.serialize())
       return self
-
-   # Before broadcasting a transaction make sure that the script is canonical
-   # This TX could have been signed by an older version of the software.
-   # Either on the offline Armory installation which may not have been upgraded
-   # or on a previous installation of Armory on this computer.
-   def minimizeDERSignaturePadding(self):
-      paddingRemoved = False
-      newTx = self.copy()
-      newTx.inputs = []
-      for txIn in self.inputs:
-         paddingRemovedFromTxIn, newTxIn  = txIn.minimizeDERSignaturePadding()
-         if paddingRemovedFromTxIn:
-            paddingRemoved = True
-            newTx.inputs.append(newTxIn)
-         else:
-            newTx.inputs.append(txIn)
-
-      return paddingRemoved, newTx.copy()
 
    def getHash(self):
       return hash256(self.serialize())
@@ -1179,6 +1143,16 @@ class UnsignedTxInput(AsciiSerializable):
       if self.scriptType in CPP_TXOUT_STDSINGLESIG and not self.signatures[0]:
          return ''
 
+      # Remove Padding and guarantee LowS is used
+      for i in range(len(self.signatures)):
+         sig = self.signatures[i]
+         if sig:
+            rBin, sBin = getRSFromDERSig(sig)
+            hashCode = sig[-1]
+            # Don't forget to tack on the one-byte hashcode
+            newSig = createDERSigFromRS(rBin, sBin) + hashCode
+            if newSig != sig:
+               self.signatures[i] = newSig
 
       # All signatures are already DER-encoded. 
       if self.scriptType == CPP_TXOUT_P2SH:
