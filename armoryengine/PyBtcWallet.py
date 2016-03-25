@@ -417,7 +417,12 @@ class PyBtcWallet(object):
       """
       
       if not self.doBlockchainSync==BLOCKCHAIN_DONOTUSE:
-         return self.cppWallet.getSpendableTxOutListForValue(valToSpend, IGNOREZC);
+         from CoinSelection import PyUnspentTxOut
+         utxos = self.cppWallet.getSpendableTxOutListForValue(valToSpend, IGNOREZC)
+         utxoList = []
+         for i in range(len(utxos)):
+            utxoList.append(PyUnspentTxOut().createFromCppUtxo(utxos[i]))
+         return utxoList
       else:
          LOGERROR('***Blockchain is not available for accessing wallet-tx data')
          return []
@@ -439,7 +444,12 @@ class PyBtcWallet(object):
       #return full set of unspent TxOuts
       if not self.doBlockchainSync==BLOCKCHAIN_DONOTUSE:
          #calling this with no value argument will return the full UTXO list
-         return self.cppWallet.getSpendableTxOutListForValue(IGNOREZC);
+         from CoinSelection import PyUnspentTxOut
+         utxos = self.cppWallet.getSpendableTxOutListForValue(IGNOREZC)
+         utxoList = []
+         for i in range(len(utxos)):
+            utxoList.append(PyUnspentTxOut().createFromCppUtxo(utxos[i]))
+         return utxoList         
       else:
          LOGERROR('***Blockchain is not available for accessing wallet-tx data')
          return []
@@ -718,7 +728,7 @@ class PyBtcWallet(object):
          # This was really only needed when we were putting name in filename
          #for c in ',?;:\'"?/\\=+-|[]{}<>':
             #shortName = shortName.replace(c,'_')
-         newName = 'armory_%s_.WatchOnly.wallet' % self.uniqueIDB58
+         newName = 'armory_%s_WatchOnly.wallet' % self.uniqueIDB58
          self.walletPath = os.path.join(ARMORY_HOME_DIR, newName)
 
       # Start writing the wallet.
@@ -1323,6 +1333,8 @@ class PyBtcWallet(object):
       """
       Make a copy of this wallet that contains no private key data
       """
+      # TODO: Fix logic, says aborting but continues with method.
+      # Decide on and implement correct functionality.
       if not self.addrMap['ROOT'].hasPrivKey():
          LOGWARN('This wallet is already void of any private key data!')
          LOGWARN('Aborting wallet fork operation.')
