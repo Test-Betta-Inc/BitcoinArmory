@@ -49,7 +49,7 @@ void ScrAddrFilter::setSSHLastScanned(uint32_t height)
       StoredScriptHistory ssh;
       lmdb_->getStoredScriptHistorySummary(ssh, scrAddrPair.first);
       if (!ssh.isInitialized())
-         ssh.uniqueKey_ = scrAddrPair.first;
+         throw runtime_error("uninitialized SSH header");
 
       ssh.alreadyScannedUpToBlk_ = height;
 
@@ -185,19 +185,25 @@ void ScrAddrFilter::scanScrAddrThread()
 
    if(doScan_ == false)
    {
-      //new addresses, set their last seen block in the SSH entries
+      //new addresses, create the DB key and 
+      //set the last seen block in the SSH entries
+      buildSSHKeys();
       setSSHLastScanned(currentTopBlockHeight());
    }
    else
    {
-      //wipe SSH
+      //no need for that otherwise, the addresses will be scanned, which
+      //will create the DB keys and set the proper last seen block for
+      //each SSH
+      //instead, let's make sure the SSH we are scanning have no prior history
+      //by wiping them
       vector<BinaryData> saVec;
       for (const auto& scrAddrPair : scrAddrMap_)
          saVec.push_back(scrAddrPair.first);
       wipeScrAddrsSSH(saVec);
       saVec.clear();
 
-      //scan from 0
+      //scan from height 0
       topScannedBlockHash =
          applyBlockRangeToDB(0, endBlock, wltIDs);
    }
@@ -413,6 +419,35 @@ const vector<string> ScrAddrFilter::getNextWalletIDToScan(void)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+void ScrAddrFilter::buildSSHKeys()
+{
+   //prepare the container
+   SSHheaders sshHeaders(1, 0);
+   sshHeaders.sshToModify_.reset(new map<BinaryData, StoredScriptHistory>());
+   
+   vector<BinaryData> scrAddrs;
+   for (auto& sa : scrAddrMap_)
+   {
+      scrAddrs.push_back(sa.first);
+   }
+
+   //we may create new ssh keys, need the lock first.
+   unique_lock<mutex> addressingLock(SSHheaders::keyAddressingMutex_);
+
+   //let the SSHheaders object handle the key creation and collision detection
+   sshHeaders.processSshHeaders(scrAddrs);
+   
+   //write the initialized SSHs to DB, the scanning process will grab them from
+   //the DB when needed
+   LMDBEnv::Transaction tx;
+   lmdb_->beginDBTransaction(&tx, HISTORY, LMDB::ReadWrite);
+   for (auto& ssh : *sshHeaders.sshToModify_)
+   {
+      lmdb_->putStoredScriptHistorySummary(ssh.second);
+   }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 //ZeroConfContainer Methods
 ///////////////////////////////////////////////////////////////////////////////
 map<BinaryData, TxIOPair> ZeroConfContainer::emptyTxioMap_;
@@ -461,12 +496,9 @@ void ZeroConfContainer::addRawTx(const BinaryData& rawTx, uint32_t txtime)
    zcTx.setTxTime(txtime);
 
    //grab container lock
-   while (lock_.fetch_or(1, memory_order_acquire));
+   unique_lock<mutex> lock(mu_);
 
    newZCMap_[ZCkey] = zcTx;
-
-   //release lock
-   lock_.store(0, memory_order_release);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -611,12 +643,6 @@ map<BinaryData, vector<BinaryData>> ZeroConfContainer::purge(
    }
 
    return invalidatedKeys;
-
-   /*
-   // Rewrite the zero-conf pool file
-   if (hashRmVec.size() > 0)
-   rewriteZeroConfFile();
-   */
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -640,18 +666,18 @@ bool ZeroConfContainer::parseNewZC(function<bool(const BinaryData&)> filter,
    uint32_t nProcessed = 0;
 
    bool zcIsOurs = false;
+   map<BinaryData, Tx> zcMap;
 
-   //grab ZC container lock
-   while (lock_.fetch_or(1, memory_order_acquire));
+   {
+      //grab ZC container lock
+      unique_lock<mutex> lock(mu_);
 
-   //copy new ZC map
-   map<BinaryData, Tx> zcMap = newZCMap_;
-
-   //release lock
-   lock_.store(0, memory_order_release);
+      //copy new ZC map
+      zcMap = newZCMap_;
+   }
 
    LMDBEnv::Transaction tx;
-   db_->beginDBTransaction(&tx, HISTORY, LMDB::ReadOnly);
+   db_->beginDBTransaction(&tx, ZEROCONF, LMDB::ReadOnly);
 
    while (1)
    {
@@ -664,8 +690,6 @@ bool ZeroConfContainer::parseNewZC(function<bool(const BinaryData&)> filter,
          const BinaryData& txHash = newZCPair.second.getThisHash();
          if (txHashToDBKey_.find(txHash) != txHashToDBKey_.end())
             continue; //already have this ZC
-
-         //LOGWARN << "new ZC transcation: " << txHash.toHexStr();
 
          {
             map<BinaryData, map<BinaryData, TxIOPair> > newTxIO =
@@ -708,14 +732,13 @@ bool ZeroConfContainer::parseNewZC(function<bool(const BinaryData&)> filter,
       }
 
       //grab ZC container lock
-      while (lock_.fetch_or(1, memory_order_acquire));
-
+      unique_lock<mutex> lock(mu_);
+         
       //check if newZCMap_ doesnt have new Txn
       if (nProcessed >= newZCMap_.size())
       {
          //clear map and release lock
          newZCMap_.clear();
-         lock_.store(0, memory_order_release);
 
          //break out of the loop
          break;
@@ -734,8 +757,7 @@ bool ZeroConfContainer::parseNewZC(function<bool(const BinaryData&)> filter,
 
       zcMap = newZCMap_;
 
-      //reset counter and release lock
-      lock_.store(0, memory_order_release);
+      //reset counter
       nProcessed = 0;
    }
 
@@ -820,7 +842,7 @@ ZeroConfContainer::ZCisMineBulkFilter(const Tx & tx,
       OutPoint op;
       op.unserialize(txStartPtr + tx.getTxInOffset(iin), 36);
 
-      //check ZC txhash first, always cheaper than grabing a stxo from DB,
+      //check ZC txhash first, always cheaper than grabbing a stxo from DB,
       //and will always be checked if the tx doesn't hit in DB outpoints.
       {
          BinaryData opZcKey;
@@ -946,8 +968,6 @@ void ZeroConfContainer::clear()
    txioMap_.clear();
    newZCMap_.clear();
    newTxioMap_.clear();
-
-   lock_.store(0, memory_order_release);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -988,12 +1008,7 @@ void ZeroConfContainer::updateZCinDB(const vector<BinaryData>& keysToWrite,
    const vector<BinaryData>& keysToDelete)
 {
    //should run in its own thread to make sure we can get a write tx
-   DB_SELECT dbs = BLKDATA;
-   if (db_->getDbType() != ARMORY_DB_SUPER)
-      dbs = HISTORY;
-
-   LMDBEnv::Transaction tx;
-   db_->beginDBTransaction(&tx, dbs, LMDB::ReadWrite);
+   LMDBEnv::Transaction tx(db_->dbEnv_[ZEROCONF].get(), LMDB::ReadWrite);
 
    for (auto& key : keysToWrite)
    {
@@ -1015,7 +1030,7 @@ void ZeroConfContainer::updateZCinDB(const vector<BinaryData>& keysToWrite,
       else
          keyWithPrefix = key;
 
-      LDBIter dbIter(db_->getIterator(dbs));
+      LDBIter dbIter(db_->getIterator(ZEROCONF));
 
       if (!dbIter.seekTo(keyWithPrefix))
          continue;
@@ -1033,7 +1048,7 @@ void ZeroConfContainer::updateZCinDB(const vector<BinaryData>& keysToWrite,
       while (dbIter.advanceAndRead(DB_PREFIX_ZCDATA));
 
       for (auto Key : ktd)
-         db_->deleteValue(dbs, Key);
+         db_->deleteValue(ZEROCONF, Key);
    }
 }
 
@@ -1045,11 +1060,9 @@ void ZeroConfContainer::loadZeroConfMempool(
    //run this in its own scope so the iter and tx are closed in order to open
    //RW tx afterwards
    {
-      auto dbs = db_->getDbSelect(HISTORY);
-
       LMDBEnv::Transaction tx;
-      db_->beginDBTransaction(&tx, dbs, LMDB::ReadOnly);
-      LDBIter dbIter(db_->getIterator(dbs));
+      db_->beginDBTransaction(&tx, ZEROCONF, LMDB::ReadOnly);
+      LDBIter dbIter(db_->getIterator(ZEROCONF));
 
       if (!dbIter.seekToStartsWith(DB_PREFIX_ZCDATA))
       {

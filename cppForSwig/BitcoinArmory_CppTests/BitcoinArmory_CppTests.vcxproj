@@ -178,6 +178,7 @@
     <ClInclude Include="..\BtcUtils.h" />
     <ClInclude Include="..\BtcWallet.h" />
     <ClInclude Include="..\EncryptionUtils.h" />
+    <ClInclude Include="..\FileMap.h" />
     <ClInclude Include="..\gtest\gtest.h" />
     <ClInclude Include="..\HistoryPager.h" />
     <ClInclude Include="..\LedgerEntry.h" />
@@ -188,6 +189,7 @@
     <ClInclude Include="..\Progress.h" />
     <ClInclude Include="..\ReorgUpdater.h" />
     <ClInclude Include="..\ScrAddrObj.h" />
+    <ClInclude Include="..\SSHheaders.h" />
     <ClInclude Include="..\StoredBlockObj.h" />
     <ClInclude Include="..\ThreadSafeContainer.h" />
     <ClInclude Include="..\txio.h" />
@@ -205,6 +207,7 @@
     <ClCompile Include="..\BtcUtils.cpp" />
     <ClCompile Include="..\BtcWallet.cpp" />
     <ClCompile Include="..\EncryptionUtils.cpp" />
+    <ClCompile Include="..\FileMap.cpp" />
     <ClCompile Include="..\gtest\CppBlockUtilsTests.cpp" />
     <ClCompile Include="..\gtest\gtest-all.cc" />
     <ClCompile Include="..\HistoryPager.cpp" />
@@ -217,6 +220,7 @@
     <ClCompile Include="..\lmdb_wrapper.cpp" />
     <ClCompile Include="..\Progress.cpp" />
     <ClCompile Include="..\ScrAddrObj.cpp" />
+    <ClCompile Include="..\SSHheaders.cpp" />
     <ClCompile Include="..\StoredBlockObj.cpp" />
     <ClCompile Include="..\txio.cpp" />
     <ClCompile Include="..\UniversalTimer.cpp" />

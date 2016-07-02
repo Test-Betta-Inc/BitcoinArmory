@@ -195,7 +195,7 @@ C:\Python27\Lib\site-packages\PyQt4\pyrcc4.exe -o ..\..\qrc_img_resources.py ..\
 </Command>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>..\swigwin\swig.exe -c++ -python -threads -classic -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
+      <Command>..\swigwin\swig.exe -c++ -python -threads -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win_XP_32|Win32'">
@@ -245,7 +245,7 @@ C:\Python27_64\Lib\site-packages\PyQt4\pyrcc4.exe -o ..\..\qrc_img_resources.py 
 </Command>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>..\swigwin\swig.exe -c++ -python -threads -classic -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
+      <Command>..\swigwin\swig.exe -c++ -python -threads -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win_XP_32|x64'">
@@ -296,7 +296,7 @@ C:\Python27_64\Lib\site-packages\PyQt4\pyrcc4.exe -o ..\..\qrc_img_resources.py 
       </DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>..\swigwin\swig.exe -c++ -python -threads -classic -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
+      <Command>..\swigwin\swig.exe -c++ -python -threads -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>build_installer.bat
@@ -335,7 +335,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
       </DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>..\swigwin\swig.exe -c++ -python -threads -classic -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
+      <Command>..\swigwin\swig.exe -c++ -python -threads -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>..\..\build_installer.bat</Command>
@@ -364,7 +364,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
       </DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>..\swigwin\swig.exe -c++ -python -threads -classic -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
+      <Command>..\swigwin\swig.exe -c++ -python -threads -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>build_installer_64.bat</Command>
@@ -393,7 +393,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
       </DelayLoadDLLs>
     </Link>
     <PreBuildEvent>
-      <Command>..\swigwin\swig.exe -c++ -python -threads -classic -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
+      <Command>..\swigwin\swig.exe -c++ -python -threads -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>..\..\build_installer_64.bat</Command>
@@ -412,7 +412,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
       <SubSystem>Console</SubSystem>
     </Link>
     <PreBuildEvent>
-      <Command>..\swigwin\swig.exe -c++ -python -threads -classic -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
+      <Command>..\swigwin\swig.exe -c++ -python -threads -outdir ..\..\ -v ..\CppBlockUtils.i</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -426,6 +426,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
     <ClInclude Include="..\BtcUtils.h" />
     <ClInclude Include="..\BtcWallet.h" />
     <ClInclude Include="..\EncryptionUtils.h" />
+    <ClInclude Include="..\FileMap.h" />
     <ClInclude Include="..\HistoryPager.h" />
     <ClInclude Include="..\LedgerEntry.h" />
     <ClInclude Include="..\lmdb_wrapper.h" />
@@ -433,6 +434,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
     <ClInclude Include="..\Progress.h" />
     <ClInclude Include="..\ReorgUpdater.h" />
     <ClInclude Include="..\ScrAddrObj.h" />
+    <ClInclude Include="..\SSHheaders.h" />
     <ClInclude Include="..\StoredBlockObj.h" />
     <ClInclude Include="..\ThreadSafeContainer.h" />
     <ClInclude Include="..\txio.h" />
@@ -451,6 +453,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
     <ClCompile Include="..\BtcWallet.cpp" />
     <ClCompile Include="..\CppBlockUtils_wrap.cxx" />
     <ClCompile Include="..\EncryptionUtils.cpp" />
+    <ClCompile Include="..\FileMap.cpp" />
     <ClCompile Include="..\HistoryPager.cpp" />
     <ClCompile Include="..\LedgerEntry.cpp" />
     <ClCompile Include="..\leveldb_windows_port\win32_posix\dirent_win32.cpp" />
@@ -461,6 +464,7 @@ copy ..\libs\Win32\BitcoinArmory_SwigDLL.dll ..\..\_CppBlockUtils.pyd
     <ClCompile Include="..\lmdb_wrapper.cpp" />
     <ClCompile Include="..\Progress.cpp" />
     <ClCompile Include="..\ScrAddrObj.cpp" />
+    <ClCompile Include="..\SSHheaders.cpp" />
     <ClCompile Include="..\StoredBlockObj.cpp" />
     <ClCompile Include="..\txio.cpp" />
     <ClCompile Include="..\UniversalTimer.cpp" />

@@ -516,13 +516,18 @@ vector<UnspentTxOut> BtcWallet::getSpendableTxOutListForValue(uint64_t val,
    val defaults to UINT64_MAX, so not passing val will result in 
    grabbing all UTXOs in the wallet
    ***/
-
-   prepareTxOutHistory(val, ignoreZC);
    LMDBBlockDatabase *db = bdvPtr_->getDB();
+
+   {
+      LMDBEnv::Transaction tx;
+      db->beginDBTransaction(&tx, HISTORY, LMDB::ReadOnly);
+
+      prepareTxOutHistory(val, ignoreZC);
+   }
 
    //start a RO txn to grab the txouts from DB
    LMDBEnv::Transaction tx;
-   db->beginDBTransaction(&tx, HISTORY, LMDB::ReadOnly);
+   db->beginDBTransaction(&tx, STXO, LMDB::ReadOnly);
 
    vector<UnspentTxOut> utxoList;
    uint32_t blk = bdvPtr_->getTopBlockHeight();

@@ -66,7 +66,7 @@ LEVELDB_BLKDATA = 'leveldb_blkdata'
 LEVELDB_HEADERS = 'leveldb_headers'
 
 # Version Numbers 
-BTCARMORY_VERSION    = (0, 93,  1, 0)  # (Major, Minor, Bugfix, AutoIncrement) 
+BTCARMORY_VERSION    = (0, 93, 99, 1)  # (Major, Minor, Bugfix, AutoIncrement) 
 PYBTCWALLET_VERSION  = (1, 35,  0, 0)  # (Major, Minor, Bugfix, AutoIncrement)
 
 ARMORY_DONATION_ADDR = '1ArmoryXcfq7TnCSuZa9fQjRYwJ4bkRKfv'
@@ -227,6 +227,7 @@ class UstxError(Exception): pass
 class P2SHNotSupportedError(Exception): pass
 class NonBase58CharacterError(Exception): pass
 class isMSWallet(Exception): pass
+class ReactorListenError(Exception): pass
 
 # Get the host operating system
 opsys = platform.system()
@@ -2406,7 +2407,7 @@ def CreateQRMatrix(dataToEncode, errLevel=QRErrorCorrectLevel.L):
          qr.make()
          success=True
          break
-      except TypeError:
+      except OverflowError:
          sz += 1
 
    if not success:
@@ -3760,3 +3761,48 @@ def onlineModeIsPossible(btcdir=BTC_HOME_DIR):
                 INTERNET_STATUS.Unavailable and \
       satoshiIsAvailable() and \
       os.path.exists(os.path.join(btcdir, 'blocks'))
+
+# Have to make sure reactor is imported just before using it
+# Eclipse doesn't recognize twisted reactor methods
+# Also this consolidates all Eclipse error indicators into one area
+# so that the rest of the code base can avoid show
+# false errors in eclipse
+def reactorCallLater(*args, **kwargs):
+   from twisted.internet import reactor
+   reactor.callLater(*args, **kwargs)
+
+def reactorRun(*args, **kwargs):
+   from twisted.internet import reactor
+   reactor.run(*args, **kwargs)
+
+def reactorStop(*args, **kwargs):
+   from twisted.internet import reactor
+   reactor.stop(*args, **kwargs)
+   
+def reactorRunReturn(*args, **kwargs):
+   from twisted.internet import reactor
+   reactor.runReturn(*args, **kwargs)
+
+def reactorListenTCP(*args, **kwargs):
+   from twisted.internet import reactor
+   from twisted.internet import error
+   try:
+      reactor.listenTCP(*args, **kwargs)
+   except error.CannotListenError:
+      raise ReactorListenError
+
+def reactorConnectTCP(*args, **kwargs):
+   from twisted.internet import reactor
+   reactor.connectTCP(*args, **kwargs)
+   
+def reactorCallWhenRunning(*args, **kwargs):
+   from twisted.internet import reactor
+   reactor.callWhenRunning(*args, **kwargs)
+
+def reactorAddSystemEventTrigger(*args, **kwargs):
+   from twisted.internet import reactor
+   reactor.addSystemEventTrigger(*args, **kwargs)
+
+def reactorGetThreadPool():
+   from twisted.internet import reactor
+   return reactor.threadpool

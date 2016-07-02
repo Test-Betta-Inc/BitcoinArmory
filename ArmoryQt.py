@@ -46,6 +46,8 @@ from armoryengine.Decorators import RemoveRepeatingExtensions
 from armoryengine.PyBtcWalletRecovery import WalletConsistencyCheck
 from armoryengine.parseAnnounce import changelogParser, downloadLinkParser, \
    notificationParser
+from armoryengine.ArmoryUtils import ReactorListenError, reactorRunReturn,\
+   reactorAddSystemEventTrigger
 from armorymodels import *
 from jasvet import verifySignature
 import qrc_img_resources
@@ -62,9 +64,10 @@ from dynamicImport import MODULE_PATH_KEY, ZIP_EXTENSION, getModuleList, importM
 import tempfile
 
 
+# JB: Disable ArmoryMac until we have it building with autotools
 # Load our framework with OS X-specific code.
-if OS_MACOSX:
-   import ArmoryMac
+#if OS_MACOSX:
+#   import ArmoryMac
 
 # HACK ALERT: Qt has a bug in OS X where the system font settings will override
 # the app's settings when a window is activated (e.g., Armory starts, the user
@@ -120,11 +123,11 @@ class ArmoryMainWindow(QMainWindow):
       if not OS_MACOSX:
          self.setWindowIcon(QIcon(self.iconfile))
       else:
-         self.notifCtr = ArmoryMac.MacNotificationHandler.None
          if USE_TESTNET:
             self.iconfile = ':/armory_icon_green_fullres.png'
-            ArmoryMac.MacDockIconHandler.instance().setMainWindow(self)
-            ArmoryMac.MacDockIconHandler.instance().setIcon(QIcon(self.iconfile))
+            # JB: Disable ArmoryMac until we have it building with autotools
+            #ArmoryMac.MacDockIconHandler.instance().setMainWindow(self)
+            #ArmoryMac.MacDockIconHandler.instance().setIcon(QIcon(self.iconfile))
       self.lblLogoIcon.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
 
       self.netMode     = NETWORKMODE.Offline
@@ -629,8 +632,10 @@ class ArmoryMainWindow(QMainWindow):
 
       actExportTx    = self.createAction('&Export Transactions...', exportTx)
       actSettings    = self.createAction('&Settings...', self.openSettings)
-      actMinimApp    = self.createAction('&Minimize Armory', self.minimizeArmory)
-      actExportLog   = self.createAction('Export &Log File...', self.exportLogFile)
+      actMinimApp    = self.createAction('&Minimize to System Tray',
+                                         self.minimizeArmory)
+      actExportLog   = self.createAction('Export &Log File...',
+                                         self.exportLogFile)
       actCloseApp    = self.createAction('&Quit Armory', self.closeForReal)
       self.menusList[MENUS.File].addAction(actExportTx)
       self.menusList[MENUS.File].addAction(actSettings)
@@ -821,30 +826,15 @@ class ArmoryMainWindow(QMainWindow):
 
       self.setDashboardDetails()
 
-      from twisted.internet import reactor
-      reactor.callLater(0.1,  self.execIntroDialog)
-      reactor.callLater(1, self.Heartbeat)
+      reactorCallLater(0.1,  self.execIntroDialog)
+      reactorCallLater(1, self.Heartbeat)
 
       if self.getSettingOrSetDefault('MinimizeOnOpen', False) and not CLI_ARGS:
          LOGINFO('MinimizeOnOpen is True')
-         reactor.callLater(0, self.minimizeArmory)
+         reactorCallLater(0, self.minimizeArmory)
 
       if CLI_ARGS:
-         reactor.callLater(1, self.uriLinkClicked, CLI_ARGS[0])
-
-      if OS_MACOSX:
-         self.macNotifHdlr = ArmoryMac.MacNotificationHandler()
-         if self.macNotifHdlr.hasUserNotificationCenterSupport():
-            self.notifCtr = ArmoryMac.MacNotificationHandler.BuiltIn
-         else:
-            # In theory, Qt can support notifications via Growl on pre-10.8
-            # machines. It's shaky as hell, though, so we'll rely on alternate
-            # code for now. In the future, according to
-            # https://bugreports.qt-project.org/browse/QTBUG-33733 (which may not
-            # be accurate, as the official documentation is contradictory),
-            # showMessage() may have direct support for the OS X notification
-            # center in Qt5.1. Something to experiment with later....
-            self.notifCtr = self.macNotifHdlr.hasGrowl()
+         reactorCallLater(1, self.uriLinkClicked, CLI_ARGS[0])
 
       # Now that construction of the UI is done
       # Check for warnings to be displayed
@@ -985,12 +975,14 @@ class ArmoryMainWindow(QMainWindow):
          verArmoryInt = getVersionInt(BTCARMORY_VERSION)
          if verArmoryInt >verPluginInt:
             reply = QMessageBox.warning(self, tr("Outdated Module"), tr("""
-               Module "%s" is only specified to work up to Armory version %s.
-               You are using Armory version %s.  Please remove the module if
+               Module "%(mod)s" is only specified to work up to Armory version %(maxver)s.
+               You are using Armory version %(curver)s.  Please remove the module if
                you experience any problems with it, or contact the maintainer
                for a new version.
                <br><br>
-               Do you want to continue loading the module?"""), 
+               Do you want to continue loading the module?""") \
+               % { 'mod' : moduleName, 'maxver' : plugObj.maxVersion, 
+                                    'curver' : getVersionString(BTCARMORY_VERSION)},  
                QMessageBox.Yes | QMessageBox.No)
 
             if not reply==QMessageBox.Yes:
@@ -1096,7 +1088,7 @@ class ArmoryMainWindow(QMainWindow):
                      continue
       
                # All plugins should have "tabToDisplay" and "tabName" attributes
-               LOGWARN('Adding module to tab list: "' + plugObj.tabName + '"')
+               LOGINFO('Adding module to tab list: "' + plugObj.tabName + '"')
                self.mainDisplayTabs.addTab(plugObj.getTabToDisplay(), plugObj.tabName)
       
                # Also inject any extra methods that will be 
@@ -2297,7 +2289,6 @@ class ArmoryMainWindow(QMainWindow):
       LOGINFO('Setting up networking...')
 
       # Prevent Armory from being opened twice
-      from twisted.internet import reactor
       import twisted
       def uriClick_partial(a):
          self.uriLinkClicked(a)
@@ -2306,8 +2297,8 @@ class ArmoryMainWindow(QMainWindow):
          try:
             self.InstanceListener = ArmoryListenerFactory(self.bringArmoryToFront, \
                                                           uriClick_partial )
-            reactor.listenTCP(CLI_OPTIONS.interport, self.InstanceListener)
-         except twisted.internet.error.CannotListenError:
+            reactorListenTCP(CLI_OPTIONS.interport, self.InstanceListener)
+         except ReactorListenError:
             LOGWARN('Socket already occupied!  This must be a duplicate Armory')
             QMessageBox.warning(self, tr('Already Open'), tr("""
                Armory is already running!  You can only have one Armory open
@@ -2558,8 +2549,6 @@ class ArmoryMainWindow(QMainWindow):
          # the very first time and never afterwards.
 
          # Actually setup the networking, now
-         from twisted.internet import reactor
-
          def showOfflineMsg():
             self.netMode = NETWORKMODE.Disconnected
             self.setDashboardDetails()
@@ -2569,11 +2558,11 @@ class ArmoryMainWindow(QMainWindow):
                return
 
             try:
-               self.showTrayMsg('Disconnected', 'Connection to Bitcoin-Qt ' \
-			                    'client lost!  Armory cannot send nor ' \
-								'receive bitcoins until connection is ' \
-								're-established.', QSystemTrayIcon.Critical, \
-								10000)
+               self.sysTray.showMessage('Disconnected', 'Connection to Bitcoin-Qt ' \
+                                        'client lost!  Armory cannot send nor ' \
+                                        'receive bitcoins until connection is ' \
+                                        're-established.', QSystemTrayIcon.Critical, \
+                                        10000)
             except:
                LOGEXCEPT('Failed to show disconnect notification')
 
@@ -2590,9 +2579,9 @@ class ArmoryMainWindow(QMainWindow):
 
             try:
                if self.connectCount>0:
-                  self.showTrayMsg('Connected', 'Connection to Bitcoin-Qt ' \
-                                   're-established', \
-								   QSystemTrayIcon.Information, 10000)
+                  self.sysTray.showMessage('Connected', 'Connection to Bitcoin-Qt ' \
+                                           're-established', \
+                                           QSystemTrayIcon.Information, 10000)
                self.connectCount += 1
             except:
                LOGEXCEPT('Failed to show reconnect notification')
@@ -2602,7 +2591,7 @@ class ArmoryMainWindow(QMainWindow):
                                       func_loseConnect=showOfflineMsg,
                                       func_madeConnect=showOnlineMsg,
                                       func_newTx=self.newTxFunc)
-         reactor.callWhenRunning(reactor.connectTCP, '127.0.0.1',
+         reactorCallWhenRunning(reactorConnectTCP, '127.0.0.1',
                                  BITCOIN_PORT,
                                  self.SingletonConnectedNetworkingFactory)
       return self.SingletonConnectedNetworkingFactory
@@ -2839,7 +2828,7 @@ class ArmoryMainWindow(QMainWindow):
                self.walletVisibleList.append(defaultVisible)
                wltLoad.mainWnd = self
          except:
-            LOGEXCEPT( '***WARNING: Wallet could not be loaded: %s (skipping)', 
+            LOGWARN( '***WARNING: Wallet could not be loaded: %s (skipping)', 
                                                                            fpath)
             #raise
 
@@ -3799,8 +3788,8 @@ class ArmoryMainWindow(QMainWindow):
          # Send the Tx after a short delay, give the system time to see the Tx
          # on the network and process it, and check to see if the Tx was seen.
          # We may change this setup in the future, but for now....
-         reactor.callLater(3, sendGetDataMsg)
-         reactor.callLater(7, checkForTxInBDM)
+         reactorCallLater(3, sendGetDataMsg)
+         reactorCallLater(7, checkForTxInBDM)
 
 
    #############################################################################
@@ -6136,7 +6125,8 @@ class ArmoryMainWindow(QMainWindow):
       # probably use some refactoring
       def updateAddrDetectLabels():
          try:
-            enteredText = str(addrEntryObjs['QLE_ADDR'].text()).strip()
+            
+            enteredText = unicode(addrEntryObjs['QLE_ADDR'].text()).strip().encode(errors='replace')
 
             scriptInfo = self.getScriptForUserString(enteredText)
             displayInfo = self.getDisplayStringForScript(
@@ -6172,7 +6162,7 @@ class ArmoryMainWindow(QMainWindow):
       # (The last one is really only used to determine what info is most 
       #  relevant to display to the user...it can be ignored in most cases)
       def getScript():
-         entered = str(addrEntryObjs['QLE_ADDR'].text()).strip()
+         entered = unicode(addrEntryObjs['QLE_ADDR'].text()).strip().encode(errors='replace')
          return self.getScriptForUserString(entered)
 
       addrEntryObjs['CALLBACK_GETSCRIPT'] = getScript
@@ -6400,14 +6390,14 @@ class ArmoryMainWindow(QMainWindow):
          try:
             nextBeat = fn()
             if nextBeat>0:
-               reactor.callLater(nextBeat, self.Heartbeat)
+               reactorCallLater(nextBeat, self.Heartbeat)
             else:
                self.extraHeartbeatSpecial = []
-               reactor.callLater(1, self.Heartbeat)
+               reactorCallLater(1, self.Heartbeat)
          except:
             LOGEXCEPT('Error in special heartbeat function')
             self.extraHeartbeatSpecial = []
-            reactor.callLater(1, self.Heartbeat)
+            reactorCallLater(1, self.Heartbeat)
          return
 
 
@@ -6524,7 +6514,7 @@ class ArmoryMainWindow(QMainWindow):
          errStr = 'Error Type: %s\nError Value: %s' % (errType, errVal)
          LOGERROR(errStr)
       finally:
-         reactor.callLater(nextBeatSec, self.Heartbeat)
+         reactorCallLater(nextBeatSec, self.Heartbeat)
 
 
    #############################################################################
@@ -6568,8 +6558,8 @@ class ArmoryMainWindow(QMainWindow):
          dispLines.append(tr('Amount:  %(tot)s BTC') % { 'tot' : totalStr })
          dispLines.append(tr('Sender:  %(disp)s') % { 'disp' : dispName })
 
-      self.showTrayMsg(title, '\n'.join(dispLines), \
-                       QSystemTrayIcon.Information, 10000)
+      self.sysTray.showMessage(title, '\n'.join(dispLines), \
+                               QSystemTrayIcon.Information, 10000)
       LOGINFO(title)
 
 
@@ -6634,12 +6624,12 @@ class ArmoryMainWindow(QMainWindow):
             # only operates on python wallets.  Oh well, the user can double-
             # click on the tx in their ledger if they want to see what's in it.
             # amt = determineSentToSelfAmt(le, cppWlt)[0]
-            # self.showTrayMsg('Your bitcoins just did a lap!', \
-            #             'Wallet "%s" (%s) just sent %s BTC to itself!' % \
-            #         (wlt.labelName, moneyID, coin2str(amt,maxZeros=1).strip()),
-            self.showTrayMsg(tr('Your bitcoins just did a lap!'), \
-                             tr('%(wltName)s just sent some BTC to itself!') % { 'wltName' : wltName }, \
-                             QSystemTrayIcon.Information, 10000)
+            # self.sysTray.showMessage('Your bitcoins just did a lap!', \
+            #                          'Wallet "%s" (%s) just sent %s BTC to itself!' % \
+            #                          (wlt.labelName, moneyID, coin2str(amt,maxZeros=1).strip()),
+            self.sysTray.showMessage(tr('Your bitcoins just did a lap!'), \
+                                     tr('%(wltName)s just sent some BTC to itself!') % { 'wltName' : wltName }, \
+                                     QSystemTrayIcon.Information, 10000)
             return
 
          # If coins were either received or sent from the loaded wlt/lbox         
@@ -6668,8 +6658,8 @@ class ArmoryMainWindow(QMainWindow):
             dispLines.append(tr('From:    %(wlt)s') % { 'wlt' : wltName })
             dispLines.append(tr('To:      %(recp)s') % { 'recp' : recipStr })
    
-         self.showTrayMsg(title, '\n'.join(dispLines), \
-                          QSystemTrayIcon.Information, 10000)
+         self.sysTray.showMessage(title, '\n'.join(dispLines), \
+                                  QSystemTrayIcon.Information, 10000)
          LOGINFO(title + '\n' + '\n'.join(dispLines))
 
          # Wait for 5 seconds before processing the next queue object.
@@ -6810,11 +6800,8 @@ class ArmoryMainWindow(QMainWindow):
       except:
          pass
 
-      
-
-      from twisted.internet import reactor
       LOGINFO('Attempting to close the main window!')
-      reactor.stop()
+      reactorStop()
     
 
    #############################################################################
@@ -7050,19 +7037,7 @@ class ArmoryMainWindow(QMainWindow):
          self.mainLedgerCurrentPage = previousPage
          self.PageLineEdit.setText(str(self.mainLedgerCurrentPage))
 
-   #############################################################################
-   # System tray notifications require specific code for OS X. We'll handle
-   # messages here to hide the ugliness.
-   def showTrayMsg(self, dispTitle, dispText, dispIconType, dispTime):
-      if not OS_MACOSX:
-         self.sysTray.showMessage(dispTitle, dispText, dispIconType, dispTime)
-      else:
-         if self.notifCtr == ArmoryMac.MacNotificationHandler.BuiltIn:
-            self.macNotifHdlr.showNotification(dispTitle, dispText)
-         elif (self.notifCtr == ArmoryMac.MacNotificationHandler.Growl12) or \
-              (self.notifCtr == ArmoryMac.MacNotificationHandler.Growl13):
-            self.macNotifHdlr.notifyGrowl(dispTitle, dispText, QIcon(self.iconfile))
-            
+
    #############################################################################
    def method_signal(self, method):
       method()   
@@ -7160,13 +7135,12 @@ if 1:
 
    SPLASH.finish(form)
 
-   from twisted.internet import reactor
    def endProgram():
-      if reactor.threadpool is not None:
-         reactor.threadpool.stop()
+      if reactorGetThreadPool() is not None:
+         reactorGetThreadPool().stop()
       QAPP.quit()
 
-   reactor.addSystemEventTrigger('before', 'shutdown', endProgram)
+   reactorAddSystemEventTrigger('before', 'shutdown', endProgram)
    QAPP.setQuitOnLastWindowClosed(True)
-   reactor.runReturn()
+   reactorRunReturn()
    os._exit(QAPP.exec_())

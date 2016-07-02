@@ -15,6 +15,7 @@
 #include "BinaryData.h"
 #include "ScrAddrObj.h"
 #include "BtcWallet.h"
+#include "SSHheaders.h"
 
 
 class ZeroConfContainer;
@@ -207,6 +208,7 @@ public:
       function<void(const vector<string>&, double prog, unsigned time)> progress);
 
    const vector<string> getNextWalletIDToScan(void);
+   LMDBBlockDatabase* getDb(void) const { return lmdb_; }
  
 public:
    virtual ScrAddrFilter* copy()=0;
@@ -226,6 +228,7 @@ private:
    void scanScrAddrThread(void);
    void buildSideScanData(
       const map<shared_ptr<BtcWallet>, vector<BinaryData>>& wltnAddrMap);
+   void buildSSHKeys(void);
 };
 
 class ZeroConfContainer
@@ -268,8 +271,8 @@ private:
    set<HashString>                              txOutsSpentByZC_;     //<txOutDbKeys>
 
 
-   std::atomic<uint32_t>       topId_;
-   atomic<uint32_t>            lock_;
+   std::atomic<uint32_t> topId_;
+   mutex                 mu_;
 
    //newZCmap_ is ephemeral. Raw ZC are saved until they are processed.
    //The code has a thread pushing new ZC, and set the BDM thread flag
@@ -301,7 +304,7 @@ private:
 
 public:
    ZeroConfContainer(LMDBBlockDatabase* db) :
-      topId_(0), lock_(0), db_(db) {}
+      topId_(0), db_(db) {}
 
    void addRawTx(const BinaryData& rawTx, uint32_t txtime);
 

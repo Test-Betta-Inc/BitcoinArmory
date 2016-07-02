@@ -14,6 +14,7 @@
 #include <vector>
 #include <set>
 
+#include "FileMap.h"
 #include "Blockchain.h"
 #include "BinaryData.h"
 #include "BtcUtils.h"
@@ -42,7 +43,7 @@
 #ifdef _MSC_VER
    #include "mman.h"
    #include "leveldb_windows_port\win32_posix\win32_posix.h"
-   #else
+#elif !defined(__MINGW32__)
    #include <fcntl.h>
    #include <sys/mman.h>
 #endif
@@ -222,9 +223,9 @@ private:
       );
    
    void deleteHistories(void);
-   void wipeHistoryAndHintDB(void);
 
-   void addRawBlockToDB(BinaryRefReader & brr, bool updateDupID = true);
+   void addRawBlockToDB(BinaryRefReader & brr, 
+      uint16_t fnum, uint64_t offset, bool updateDupID = true);
    uint32_t findFirstBlockToScan(void);
    void findFirstBlockToApply(void);
 

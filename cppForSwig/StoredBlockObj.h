@@ -45,7 +45,8 @@ enum DB_PREFIX
   DB_PREFIX_UNDODATA,
   DB_PREFIX_TRIENODES,
   DB_PREFIX_COUNT,
-  DB_PREFIX_ZCDATA
+  DB_PREFIX_ZCDATA,
+  DB_PREFIX_BLKMETA
 };
 
 // In ARMORY_DB_PARTIAL and LITE, we may not store full tx, but we will know 
@@ -62,10 +63,19 @@ enum DB_SELECT
    HEADERS,
    BLKDATA,
    HISTORY,
+   STXO,
+   SPENTNESS,
    TXHINTS,
+   ZEROCONF,
    COUNT
 };
 
+#define SUBSSHDB_PREFIX_MAX 16
+#ifdef DEBUG
+#define SUBSSHDB_PREFIX_MIN 1
+#else
+#define SUBSSHDB_PREFIX_MIN 2
+#endif
 
 enum TX_SERIALIZE_TYPE
 {
@@ -105,7 +115,6 @@ class DBTx;
 class StoredScriptHistory;
 class StoredSubHistory;
 
-
 template<class T, typename ...Args>
 static BinaryData serializeDBValue(const T &o, const Args &...a)
 {
@@ -126,6 +135,10 @@ public:
    static uint32_t   hgtxToHeight(const BinaryData& hgtx);
    static uint8_t    hgtxToDupID(const BinaryData& hgtx);
    static BinaryData heightAndDupToHgtx(uint32_t hgt, uint8_t dup);
+
+   /////////////////////////////////////////////////////////////////////////////
+   static BinaryData getBlkMetaKey(uint32_t height,
+      uint8_t  dup);
 
    /////////////////////////////////////////////////////////////////////////////
    static BinaryData getBlkDataKey(uint32_t height, 
@@ -252,19 +265,19 @@ public:
       txIndex_(UINT16_MAX),
       txOutIndex_(UINT16_MAX),
       parentHash_(0),
-      spentness_(TXOUT_SPENTUNK),
+      spentness_(TXOUT_UNSPENT),
       isCoinbase_(false),
       spentByTxInKey_(0)
    {}
 
-   bool isInitialized(void) const { return dataCopy_.getSize() > 0; }
+   bool isInitialized(void) const { return getSize() > 0; }
    bool isNull(void) { return !isInitialized(); }
    void unserialize(BinaryData const & data);
    void unserialize(BinaryDataRef data);
    void unserialize(BinaryRefReader & brr);
 
-   void       unserializeDBValue(BinaryRefReader &  brr);
-   void       serializeDBValue(BinaryWriter & bw, ARMORY_DB_TYPE dbType,
+   void unserializeDBValue(BinaryRefReader &  brr);
+   void serializeDBValue(BinaryWriter & bw, ARMORY_DB_TYPE dbType,
       DB_PRUNE_TYPE pruneType,
       bool forceSaveSpent = false) const;
    void       unserializeDBValue(BinaryData const & bd);
@@ -285,19 +298,11 @@ public:
 
    bool matchesDBKey(BinaryDataRef dbkey) const;
 
-   uint64_t getValue(void)
-   {
-      if (dataCopy_.getSize() >= 8)
-         return READ_UINT64_LE(dataCopy_.getPtr());
-      else
-         return UINT64_MAX;
-   }
-
-
    bool isSpent(void) { return spentness_ == TXOUT_SPENT; }
-
-
    void pprintOneLine(uint32_t indent = 3);
+
+   size_t getSize(void) const
+   { return dataCopy_.getSize(); }
 
    uint32_t          txVersion_;
    BinaryData        dataCopy_;
@@ -325,7 +330,7 @@ public:
 class DBTx
 {
 public:
-   bool       isInitialized(void) const { return dataCopy_.getSize() > 0; }
+   bool       isInitialized(void) const { return getDataCopyRef().getSize() > 0; }
    bool       isNull(void) { return !isInitialized(); }
 
    BinaryData getSerializedTxFragged(void) const;
@@ -351,13 +356,15 @@ public:
 
    virtual StoredTxOut& initAndGetStxoByIndex(uint16_t index) = 0;
    virtual bool haveAllTxOut(void) const = 0;
+   
+   virtual const BinaryDataRef getDataCopyRef(void) const = 0;
+   virtual BinaryData& getDataCopy(void) = 0;
    /////
 
    BinaryData           thisHash_;
    uint32_t             lockTime_ = 0;
    uint32_t             unixTime_ = 0;
 
-   BinaryData           dataCopy_;
    bool                 isFragged_ = false;
    uint32_t             version_ = 0;
    uint32_t             blockHeight_ = UINT32_MAX;
@@ -401,6 +408,7 @@ public:
 
    void pprintFullTx(uint32_t indent = 3);
 
+   /////
    virtual StoredTxOut& initAndGetStxoByIndex(uint16_t index)
    {
       auto& stxo = stxoMap_[index];
@@ -411,7 +419,15 @@ public:
 
    virtual bool haveAllTxOut(void) const;
 
+   virtual const BinaryDataRef getDataCopyRef(void) const
+   { return dataCopy_.getRef(); }
+
+   virtual BinaryData& getDataCopy(void)
+   { return dataCopy_; }
+
+
    ////
+   BinaryData           dataCopy_;
    map<uint16_t, StoredTxOut> stxoMap_;
 };
 
@@ -530,6 +546,8 @@ public:
 // transactions in the previous few blocks before it.  
 class StoredSubHistory
 {
+   friend class BlockWriteBatcher;
+   friend struct ProcessedBatchSerializer;
 public:
 
    StoredSubHistory(void) : uniqueKey_(0), hgtX_(0), height_(0), dupID_(0),
@@ -550,10 +568,6 @@ public:
 
    BinaryData    getDBKey(bool withPrefix=true) const;
    SCRIPT_PREFIX getScriptType(void) const;
-   //uint64_t      getTxioCount(void) const {return (uint64_t)txioMap_.size();}
-
-   //void pprintOneLine(uint32_t indent=3);
-   //void pprintFullSSH(uint32_t indent=3);
 
    TxIOPair*   findTxio(BinaryData const & dbKey8B, bool includeMultisig=false);
    TxIOPair& insertTxio(TxIOPair const & txio, 
@@ -562,13 +576,13 @@ public:
 
    
    // This adds the TxOut if it doesn't exist yet
-   const TxIOPair* markTxOutSpent(const BinaryData& txOutKey8B);
+   void markTxOutSpent(const BinaryData& txOutKey8B);
 
    void markTxOutUnspent(const BinaryData& txOutKey8B,
-                             uint64_t&  additionalSize,
                              const uint64_t&  value,
                              bool       isCoinbase,
-                             bool       isMultisigRef);
+                             bool       isMultisigRef,
+                             bool       increment);
 
    uint64_t getSubHistoryBalance(bool withMultisig=false);
    uint64_t getSubHistoryReceived(bool withMultisig=false);
@@ -606,6 +620,10 @@ public:
    uint32_t height_;
    uint8_t  dupID_;
    uint32_t txioCount_;
+
+private:
+   //BWB members, ignore outside of scans
+   vector<BinaryData> keysToDelete_;
 };
 
 
@@ -634,6 +652,7 @@ public:
    void       unserializeDBKey(BinaryDataRef key, bool withPrefix=true);
 
    BinaryData    getDBKey(bool withPrefix=true) const;
+   BinaryData    getSubKey() const;
    SCRIPT_PREFIX getScriptType(void) const;
 
    void pprintOneLine(uint32_t indent=3);
@@ -653,11 +672,16 @@ public:
    void insertTxio(const TxIOPair& txio);
    void eraseTxio(const TxIOPair& txio);
 
+
+   /////
    BinaryData     uniqueKey_;  // includes the prefix byte!
    uint32_t       version_;
    uint32_t       alreadyScannedUpToBlk_;
    uint64_t       totalTxioCount_;
    uint64_t       totalUnspent_;
+   
+   uint8_t        dbPrefix_ = 0;
+   uint8_t        keyLength_ = 0;
 
    // If this SSH has only one TxIO (most of them), then we don't bother
    // with supplemental entries just to hold that one TxIO in the DB.
